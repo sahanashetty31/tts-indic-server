@@ -1,4 +1,3 @@
-
 import gradio as gr
 import requests
 import logging
@@ -21,19 +20,23 @@ def get_audio(input_text, usecase_id):
             return f"Error: Use case with ID {usecase_id} not found."
 
         voice_description = usecase["voice_description"]
-        print(voice_description)
-        print(input_text)
+        logger.info(f"Voice Description: {voice_description}")
+        logger.info(f"Input Text: {input_text}")
+
         # Define the API endpoint and headers
-        url = "https://gaganyatri-indic-all-server.hf.space/v1/audio/speech"
+        url = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
         headers = {
-            "accept": "application/json",
+            "X-API-Key": "your-new-secret-api-key",
             "Content-Type": "application/json"
         }
         
         # Define the request payload
         payload = {
             "input": input_text,
-            "voice": voice_description
+            "voice": voice_description,
+            "model": "ai4bharat/indic-parler-tts",
+            "response_format": "mp3",
+            "speed": 1.0
         }
         
         # Send the POST request
