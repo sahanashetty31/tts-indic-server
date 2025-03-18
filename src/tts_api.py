@@ -65,6 +65,8 @@ class ModelManager:
             device,  # type: ignore
             dtype=torch_dtype,
         )
+            
+
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         description_tokenizer = AutoTokenizer.from_pretrained(model.config.text_encoder._name_or_path)
 

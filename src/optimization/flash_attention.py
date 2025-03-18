@@ -20,8 +20,10 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 # Clear GPU memory before loading the model
 clear_gpu_memory()
 
+attn_implementation = "flash_attention_2"
+
 # Model and tokenizer initialization with mixed precision
-model = ParlerTTSForConditionalGeneration.from_pretrained("ai4bharat/indic-parler-tts").to(device)
+model = ParlerTTSForConditionalGeneration.from_pretrained("ai4bharat/indic-parler-tts", attn_implementation=attn_implementation).to(device)
 tokenizer = AutoTokenizer.from_pretrained("ai4bharat/indic-parler-tts")
 description_tokenizer = AutoTokenizer.from_pretrained(model.config.text_encoder._name_or_path)
 
@@ -50,7 +52,7 @@ print(f"Time taken to generate audio: {elapsed_time:.2f} seconds")
 
 # Save audio to file
 audio_arr = generation.cpu().numpy().squeeze()
-sf.write("dhwani_output.wav", audio_arr, model.config.sampling_rate)
+sf.write("flash_output.wav", audio_arr, model.config.sampling_rate)
 
 # Clear GPU memory after generation
 clear_gpu_memory()
