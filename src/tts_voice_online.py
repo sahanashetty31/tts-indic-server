@@ -2,6 +2,7 @@ import gradio as gr
 import requests
 import logging
 import json
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,7 +25,7 @@ def get_audio(input_text, usecase_id):
         logger.info(f"Input Text: {input_text}")
 
         # Define the API endpoint and headers
-        url = "https://gaganyatri-llm-indic-server-cpu.hf.space/v1/audio/speech"
+        url = "https://slabstech-dhwani-internal-api-server.hf.space/v1/audio/speech"
         headers = {
             "X-API-Key": "your-new-secret-api-key",
             "Content-Type": "application/json"
@@ -67,22 +68,33 @@ def get_audio(input_text, usecase_id):
         logger.error(f"General exception: {e}")
         return f"Error: {e}"
 
-# Define Gradio interface inputs and outputs
-demo = gr.Interface(
-    fn=get_audio,
-    inputs=[
-        gr.Textbox(label="Enter Text", placeholder="Type your text here..."),
-        gr.Dropdown(
-            label="Select Use Case",
-            choices=[f"{uc['id']}: {uc['voice_description']}" for uc in usecases["usecases"]],
-            type="index"
-        )
-    ],
-    outputs=gr.Audio(label="Generated Audio"),
-)
+# Retrieve authentication credentials from environment variables
+USERNAME = os.environ.get("GRADIO_USERNAME")
+PASSWORD = os.environ.get("GRADIO_PASSWORD")
 
-# Launch the Gradio demo
+if not USERNAME or not PASSWORD:
+    raise ValueError("Environment variables GRADIO_USERNAME and GRADIO_PASSWORD must be set.")
+
+# Define Gradio interface inputs and outputs
+with gr.Blocks() as demo:
+    input_text = gr.Textbox(label="Enter Text", placeholder="Type your text here...")
+    usecase_dropdown = gr.Dropdown(
+        label="Select Use Case",
+        choices=[f"{uc['id']}: {uc['voice_description']}" for uc in usecases["usecases"]],
+        type="index"
+    )
+    generate_button = gr.Button("Generate Audio")
+    audio_output = gr.Audio(label="Generated Audio")
+
+    generate_button.click(
+        fn=get_audio,
+        inputs=[input_text, usecase_dropdown],
+        outputs=audio_output
+    )
+
+# Launch the Gradio demo with authentication
 try:
-    demo.launch()
+    demo.launch(auth=(USERNAME, PASSWORD))  # Use credentials from environment variables
 except Exception as e:
     logger.error(f"Failed to launch Gradio demo: {e}")
+    raise
