@@ -2,143 +2,95 @@ import gradio as gr
 import requests
 import logging
 import json
-import traceback
+import os
 
 # Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("app_debug.log"),
-        logging.StreamHandler()
-    ]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Load the JSON file containing use cases
 with open("voice_description_indian.json", "r") as file:
     usecases = json.load(file)
-    logger.debug(f"Loaded {len(usecases['usecases'])} use cases from JSON file")
 
-# Function to obtain an access token
-def get_access_token(username, password):
-    try:
-        url_token = "https://slabstech-dhwani-server.hf.space/v1/token"
-        payload = {"username": username, "password": password}
-        
-        response_token = requests.post(url_token, json=payload)
-        response_token.raise_for_status()
-        token_data = response_token.json()
-        if 'token' in token_data:
-            token = token_data['token']
-        elif 'access_token' in token_data:
-            token = token_data['access_token']
-        else:
-            logger.error("Token not found in response. Full response: %s", response_token.text)
-            return None
-            
-        logger.debug("Successfully acquired access token")
-        return token
-
-    except requests.exceptions.HTTPError as e:
-        logger.error(f"Token request HTTP error: {e.response.status_code} - {e.response.text}")
+def get_api_token():
+    username = os.getenv('USERNAME')
+    password = os.getenv('PASSWORD')
+    if not username or not password:
+        raise ValueError("Environment variables USERNAME and PASSWORD must be set.")
+    url = 'https://slabstech-dhwani-server.hf.space/v1/token'
+    headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
+    payload = {"username": username, "password": password}
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        return response.json().get('access_token')
+    else:
+        logger.error(f"Failed to get API token: {response.text}")
         return None
 
-# Function to send text input to the API and retrieve the audio file
-def get_audio(input_text, usecase_id, token):
+def get_audio(input_text, usecase_id):
     try:
-        logger.info(f"Starting audio generation request")
-        logger.debug(f"Inputs - Text: '{input_text}', UseCase ID: {usecase_id}")
+        api_token = get_api_token()
+        if not api_token:
+            return "Error: Failed to obtain API token."
 
-        # Use case validation
-        logger.debug(f"Looking up use case ID: {usecase_id}")
-        usecase = next((uc for uc in usecases["usecases"] if str(uc["id"]) == str(usecase_id)), None)
+        # Retrieve the selected use case
+        usecase = next((uc for uc in usecases["usecases"] if uc["id"] == usecase_id), None)
         if not usecase:
-            logger.error(f"Use case {usecase_id} not found in available options")
-            return f"Error: Invalid use case ID {usecase_id}"
-            
-        logger.debug(f"Found use case: {usecase['voice_description']}")
+            return f"Error: Use case with ID {usecase_id} not found."
 
-        # API request
-        url_audio = "https://slabstech-dhwani-server.hf.space/v1/audio/speech"
+        voice_description = usecase.get("voice_description")
+        
+        if not voice_description:
+            return "Error: Missing voice description in the use case JSON."
+
+        logger.info(f"Voice Description: {voice_description}")
+        logger.info(f"Input Text: {input_text}")
+
+        url = f"https://slabstech-dhwani-server.hf.space/v1/audio/speech"
         headers = {
-            "accept": "application/json",
-            "Authorization": f"Bearer {token}"
+            "Authorization": f"Bearer {api_token}",
+            "accept": "application/json"
         }
         
-        # Construct URL with query parameters
-        query_params = {
+        params = {
             "input": input_text,
-            "voice": usecase["voice_description"],
+            "voice": voice_description,
             "model": "ai4bharat/indic-parler-tts",
             "response_format": "mp3",
-            "speed": 1
+            "speed": 1.0
         }
         
-        url_audio_with_params = f"{url_audio}?input={input_text}&voice={usecase['voice_description']}&model=ai4bharat%2Findic-parler-tts&response_format=mp3&speed=1"
+        response = requests.post(url, headers=headers, params=params)
         
-        logger.debug(f"Sending request to {url_audio_with_params}")
-        
-        response_audio = requests.post(url_audio_with_params, headers=headers, stream=True)
-        
-        try:
-            response_audio.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"Audio API HTTP error: {e.response.status_code} - {e.response.text}")
-            return f"API Error: {e.response.status_code} - {e.response.text}"
-
-        # File handling
-        audio_file_path = f"usecase_{usecase['id']}_output.mp3"  # Short and meaningful filename
-        logger.debug(f"Saving audio to: {audio_file_path}")
-        
-        try:
+        if response.status_code == 200:
+            logger.info(f"API request successful. Status code: {response.status_code}")
+            audio_file_path = f"{usecase_id}_output.mp3"
             with open(audio_file_path, "wb") as audio_file:
-                for chunk in response_audio.iter_content(chunk_size=1024):
-                    if chunk:
-                        audio_file.write(chunk)
-            logger.info(f"Successfully saved audio file: {audio_file_path}")
+                audio_file.write(response.content)
+            logger.info(f"Audio file saved to: {audio_file_path}")
             return audio_file_path
-        except IOError as e:
-            logger.error(f"File save error: {str(e)}")
-            return f"Error saving file: {str(e)}"
-
+        else:
+            logger.error(f"API request failed. Status code: {response.status_code}, {response.text}")
+            return None
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}\n{traceback.format_exc()}")
-        return f"Critical error: {str(e)}"
+        logger.error(f"Exception in get_audio: {e}")
+        return None
 
-# Gradio interface
-with gr.Blocks() as demo:
-    with gr.Row():
-        username_input = gr.Textbox(label="Username")
-        password_input = gr.Textbox(label="Password", type="password")
-    
-    input_text = gr.Textbox(label="Input Text")
-    usecase_dropdown = gr.Dropdown(
-        label="Use Case",
-        choices=[f"{uc['id']}: {uc['voice_description']}" for uc in usecases["usecases"]],
-    )
-    
-    generate_button = gr.Button("Generate Audio")
-    audio_output = gr.Audio(label="Output")
-
-    def process_request(input_text, usecase_entry, username, password):
-        logger.debug(f"Processing request - User: {username}, Selection: {usecase_entry}")
-        
-        # Extract use case ID from the selected entry
-        usecase_id = usecase_entry.split(":")[0].strip()
-        
-        # Obtain access token
-        token = get_access_token(username, password)
-        if not token:
-            return "Error: Unable to authenticate"
-        
-        return get_audio(input_text, usecase_id, token)
-
-    generate_button.click(
-        fn=process_request,
-        inputs=[input_text, usecase_dropdown, username_input, password_input],
-        outputs=audio_output
-    )
+demo = gr.Interface(
+    fn=get_audio,
+    inputs=[
+        gr.Textbox(label="Enter Text", placeholder="Type your text here..."),
+        gr.Dropdown(
+            label="Select Use Case",
+            choices=[uc["id"] for uc in usecases["usecases"]],
+            type="value"
+        )
+    ],
+    outputs=gr.Audio(label="Generated Audio"),
+)
 
 if __name__ == "__main__":
-    demo.launch(share=True)
+    try:
+        demo.launch(show_error=True)
+    except Exception as e:
+        logger.error(f"Failed to launch Gradio demo: {e}")
