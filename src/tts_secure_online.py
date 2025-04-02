@@ -82,8 +82,8 @@ demo = gr.Interface(
         gr.Textbox(label="Enter Text", placeholder="Type your text here..."),
         gr.Dropdown(
             label="Select Use Case",
-            choices=[uc["id"] for uc in usecases["usecases"]],
-            type="value"
+            choices=[f"{uc['id']}: {uc['voice_description']}" for uc in usecases["usecases"]],
+            type="index"
         )
     ],
     outputs=gr.Audio(label="Generated Audio"),
